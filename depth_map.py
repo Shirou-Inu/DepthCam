@@ -3,9 +3,11 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import glob
 
-# Image Location
+
+# Test Variables
 test_path = 'test_images/'
-dist = '1000mm'
+cal_path = 'calibration/realsense_calibration.npz'
+dist = '2000mm - IR'
 
 # Testing
 mouse_pt = (0, 0)
@@ -18,7 +20,7 @@ cv.namedWindow('Preview')
 cv.setMouseCallback('Preview', mouse_loc)
 
 class depthMap:
-    def __init__(self, calibration, image_size, focal_override=None, baseline_override=None):
+    def __init__(self, calibration, image_size):
         self.R1, self.R2, self.P1, self.P2, self.Q, self.roi1, self.roi2 = cv.stereoRectify(
             calibration['camera_matrix_left'],
             calibration['dist_coeffs_left'],
@@ -47,49 +49,48 @@ class depthMap:
             cv.CV_32FC1
         )
 
-        if not focal_override:
-            self.f = calibration['camera_matrix_left'][0, 0] # Focal Length in Pixel Units
-        else:
-            self.f = focal_override
-            
-        if not baseline_override:
-            self.b = calibration['T'][0, 0] # Baseline Length in Meters
-        else:
-            self.b = baseline_override
+        self.numDisparities = 16*2
+        self.blockSize = 35
 
-        self.stereo = cv.StereoBM.create(numDisparities=16*20, blockSize=23)
-
-    def compute(self, left, right):
+        self.stereo = cv.StereoBM.create(numDisparities=self.numDisparities, blockSize=self.blockSize)
+        self.stereo.setSpeckleRange(16)
+        self.stereo.setSpeckleWindowSize(100)
+    
+    def computeDisparity(self, left, right):
         # Undistort
-        # undistort_left = cv.remap(left, self.left_map1, self.left_map2, cv.INTER_LINEAR)
-        # undistort_right = cv.remap(left, self.right_map1, self.right_map2, cv.INTER_LINEAR)
-        
-        undistort_left = left
-        undistort_right = right
+        undistort_left = cv.remap(left, self.left_map1, self.left_map2, cv.INTER_LINEAR)
+        undistort_right = cv.remap(right, self.right_map1, self.right_map2, cv.INTER_LINEAR)
 
         # Compute disparity
         disparity = self.stereo.compute(undistort_left, undistort_right)
         
         # Rescale disparity
-        # disparity = disparity.astype(np.float32) / 16.0
+        disparity = disparity.astype(np.float32) / 16.0
 
-        # Replace zeros and unknowns (negative) with small values
-        # disparity[disparity <= 0] = 0.0001
+        return disparity
 
-        # Compute real world depth
-        # depth = (self.f * self.b) / disparity
-        # return disparity
+    def computeDepth(self, left, right):
+        # Compute disparity
+        disparity = self.computeDisparity(left, right)
 
-        # return disparity
-        return cv.reprojectImageTo3D(disparity, self.Q)
+        # Compute 3D Point Map
+        pointMap = cv.reprojectImageTo3D(disparity, self.Q, handleMissingValues=True)
 
+        # Convert units to mm
+        pointMap[:, :, 2] = pointMap[:, :, 2] * 1000
+
+        return pointMap
+
+    def getUsableROI(self):
+        return cv.getValidDisparityROI(self.roi1, self.roi2, 0, self.numDisparities, self.blockSize)
+    
 
 if __name__ == '__main__':
     # Load Calibration File
-    calibration = np.load('stereo_calibration.npz')
+    calibration = np.load(cal_path)
 
     # Create Depth Map Object
-    dm = depthMap(calibration, (1280, 720), baseline_override=0.055)
+    dm = depthMap(calibration, (1280, 720))
 
     # Load Test Images
     color_images = glob.glob('{}{}/*_color.jpg'.format(test_path, dist))
@@ -107,27 +108,35 @@ if __name__ == '__main__':
         right = cv.cvtColor(right, cv.COLOR_BGR2GRAY)
 
         # Compute depth map
-        est_depth = dm.compute(left, right)
+        disparity = dm.computeDisparity(left, right)
+        est_depth = dm.computeDepth(left, right)
 
         while True:
             preview = left.copy()
             preview = cv.applyColorMap(preview, colormap=cv.COLORMAP_CIVIDIS)
-            # preview = preview[:, :, np.newaxis]
-            # preview = np.repeat(preview, 3, axis=2)
 
             ref_dist = depth[mouse_pt[1], mouse_pt[0]]
-            est_dist = est_depth[mouse_pt[1], mouse_pt[0]]
+            est_dist = np.int32(est_depth[mouse_pt[1], mouse_pt[0], 2])
 
-            depth_norm = cv.applyColorMap(np.uint8(cv.normalize(depth, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)), colormap=cv.COLORMAP_CIVIDIS)
+            ref_depth_norm = cv.applyColorMap(np.uint8(cv.normalize(depth, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)), colormap=cv.COLORMAP_CIVIDIS)
+            disparity_norm = cv.applyColorMap(np.uint8(cv.normalize(disparity, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)), colormap=cv.COLORMAP_CIVIDIS)
 
+            roi = dm.getUsableROI()
+            pt1 = (roi[0], roi[1])
+            pt2 = (roi[2], roi[3])
+            cv.rectangle(preview, pt1, pt2, (0, 0, 255))
+            cv.rectangle(ref_depth_norm, pt1, pt2, (0, 0, 255))
+            cv.rectangle(disparity_norm, pt1, pt2, (0, 0, 255))
             cv.circle(preview, mouse_pt, 4, (0, 0, 255))
-            cv.circle(depth_norm, mouse_pt, 4, (0, 0, 255))
+            cv.circle(ref_depth_norm, mouse_pt, 4, (0, 0, 255))
+            cv.circle(disparity_norm, mouse_pt, 4, (0, 0, 255))
             cv.putText(preview, 'Ref: {}mm'.format(ref_dist), (mouse_pt[0], mouse_pt[1]), cv.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 2)
             cv.putText(preview, 'Est: {}mm'.format(est_dist), (mouse_pt[0], mouse_pt[1] + 10), cv.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 2)
 
             # Display Color
             cv.imshow('Preview', preview)
-            cv.imshow('Reference Depth', depth_norm)
+            cv.imshow('Reference Depth', ref_depth_norm)
+            cv.imshow('Estimation Disparity', disparity_norm)
         
             # q to quit
             if cv.waitKey(1) == ord('q'):
