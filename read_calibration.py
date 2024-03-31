@@ -1,7 +1,7 @@
 import numpy as np
 
-# file_path = 'calibration/stereo_calibration.npz'
-file_path = 'calibration/realsense_calibration.npz'
+file_path = 'calibration/stereo_calibration.npz'
+# file_path = 'calibration/realsense_calibration.npz'
 
 with np.load(file_path) as calibration:
     camera_matrix_left = calibration['camera_matrix_left']

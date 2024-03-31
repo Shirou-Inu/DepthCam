@@ -14,22 +14,16 @@ save_path = 'calibration/stereo_calibration.npz'
 
 # Checkerboard size: Number of points in checkerboard row and column
 # Square size: Size of each square in checkerboard in meters
-def computeCalibration(left_images, right_images, checkerboard_size, square_size):
+def computeCalibration(left_images, right_images, chessboard_size, square_size):
     # Arrays to store object points and image points from all images
     object_points = []  # 3D points in real world space
     left_image_points = []  # 2D points in image plane
     right_image_points = []
 
     # Prepare grid and object points
-    objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 3), np.float32)
-    objp[:, :2] = np.mgrid[0:checkerboard_size[0], 0:checkerboard_size[1]].T.reshape(-1, 2)
+    objp = np.zeros((chessboard_size[0] * chessboard_size[1], 3), np.float32)
+    objp[:, :2] = np.mgrid[0:chessboard_size[0], 0:chessboard_size[1]].T.reshape(-1, 2)
     objp = objp * square_size  # Scale by the size of the squares
-
-    # Arrays to store calibration parameters
-    camera_matrix_left = None
-    dist_coeffs_left = None
-    camera_matrix_right = None
-    dist_coeffs_right = None
 
     for left_img, right_img in zip(left_images, right_images):
         left = cv.imread(left_img)
@@ -40,8 +34,8 @@ def computeCalibration(left_images, right_images, checkerboard_size, square_size
         gray_right = cv.cvtColor(right, cv.COLOR_BGR2GRAY)
 
         # Find the chessboard corners
-        ret_left, corners_left = cv.findChessboardCorners(gray_left, checkerboard_size, None)
-        ret_right, corners_right = cv.findChessboardCorners(gray_right, checkerboard_size, None)
+        ret_left, corners_left = cv.findChessboardCorners(gray_left, chessboard_size, None)
+        ret_right, corners_right = cv.findChessboardCorners(gray_right, chessboard_size, None)
         
         if ret_left and ret_right:
             # If corners are found, append object points and image points

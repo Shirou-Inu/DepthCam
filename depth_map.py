@@ -3,22 +3,6 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import glob
 
-
-# Test Variables
-test_path = 'test_images/'
-cal_path = 'calibration/realsense_calibration.npz'
-dist = '2000mm - IR'
-
-# Testing
-mouse_pt = (0, 0)
-
-def mouse_loc(event, x, y, args, params):
-    global mouse_pt
-    mouse_pt = (x, y)
-
-cv.namedWindow('Preview')
-cv.setMouseCallback('Preview', mouse_loc)
-
 class depthMap:
     def __init__(self, calibration, image_size):
         self.R1, self.R2, self.P1, self.P2, self.Q, self.roi1, self.roi2 = cv.stereoRectify(
@@ -77,7 +61,7 @@ class depthMap:
         pointMap = cv.reprojectImageTo3D(disparity, self.Q, handleMissingValues=True)
 
         # Convert units to mm
-        pointMap[:, :, 2] = pointMap[:, :, 2] * 1000
+        pointMap = pointMap * 1000
 
         return pointMap
 
@@ -86,6 +70,21 @@ class depthMap:
     
 
 if __name__ == '__main__':
+    # Test Variables
+    test_path = 'test_images/'
+    cal_path = 'calibration/realsense_calibration.npz'
+    dist = '2000mm - IR'
+
+    # Testing
+    mouse_pt = (0, 0)
+
+    def mouse_loc(event, x, y, args, params):
+        global mouse_pt
+        mouse_pt = (x, y)
+
+    cv.namedWindow('Preview')
+    cv.setMouseCallback('Preview', mouse_loc)
+    
     # Load Calibration File
     calibration = np.load(cal_path)
 
@@ -116,7 +115,7 @@ if __name__ == '__main__':
             preview = cv.applyColorMap(preview, colormap=cv.COLORMAP_CIVIDIS)
 
             ref_dist = depth[mouse_pt[1], mouse_pt[0]]
-            est_dist = np.int32(est_depth[mouse_pt[1], mouse_pt[0], 2])
+            est_dist = np.int32(est_depth[mouse_pt[1], mouse_pt[0]])
 
             ref_depth_norm = cv.applyColorMap(np.uint8(cv.normalize(depth, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)), colormap=cv.COLORMAP_CIVIDIS)
             disparity_norm = cv.applyColorMap(np.uint8(cv.normalize(disparity, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)), colormap=cv.COLORMAP_CIVIDIS)

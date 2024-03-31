@@ -1,6 +1,16 @@
 import pyrealsense2 as rs
 import numpy as np
-import cv2
+import cv2 as cv
+
+# Debugging
+mouse_pt = (0, 0)
+
+def show_distance(event, x, y, args, params):
+    global mouse_pt
+    mouse_pt = (x, y)
+
+cv.namedWindow("Color")
+cv.setMouseCallback("Color", show_distance)
 
 save_path = 'calibration/realsense_calibration.npz'
 
